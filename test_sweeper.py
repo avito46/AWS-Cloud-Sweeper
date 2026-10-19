@@ -315,3 +315,34 @@ def test_scan_and_lambda_handler_single_account():
     assert summary["accounts_scanned"] == 1
     assert "findings" in summary
     assert summary["errors"] == []
+
+
+def setup_subnets(ec2):
+    vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")["Vpc"]["VpcId"]
+    sub1 = ec2.create_subnet(VpcId=vpc, CidrBlock="10.0.1.0/24", AvailabilityZone="us-east-1a")["Subnet"]["SubnetId"]
+    sub2 = ec2.create_subnet(VpcId=vpc, CidrBlock="10.0.2.0/24", AvailabilityZone="us-east-1b")["Subnet"]["SubnetId"]
+    return [sub1, sub2]
+
+
+@mock_aws
+def test_elb_orphaned_found():
+    ec2 = boto3.client("ec2", "us-east-1")
+    elbv2 = boto3.client("elbv2", "us-east-1")
+    subnets = setup_subnets(ec2)
+    lb = elbv2.create_load_balancer(Name="orphan-lb", Subnets=subnets)["LoadBalancers"][0]
+    findings = sweeper.sweep_elbs(elbv2)
+    assert lb["LoadBalancerArn"] in findings
+
+
+@mock_aws
+def test_elb_protected_skipped():
+    ec2 = boto3.client("ec2", "us-east-1")
+    elbv2 = boto3.client("elbv2", "us-east-1")
+    subnets = setup_subnets(ec2)
+    lb = elbv2.create_load_balancer(
+        Name="prod-lb",
+        Subnets=subnets,
+        Tags=[{"Key": "Environment", "Value": "Production"}],
+    )["LoadBalancers"][0]
+    findings = sweeper.sweep_elbs(elbv2)
+    assert lb["LoadBalancerArn"] not in findings

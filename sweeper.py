@@ -146,7 +146,37 @@ def sweep_eips(ec2, errors=None):
 
 def sweep_elbs(elbv2, errors=None):
     # ponytail: report-only ELBs, upgrade to automated delete_load_balancer after approval period
-    return []
+    findings = []
+    paginator = elbv2.get_paginator("describe_load_balancers")
+    for page in paginator.paginate():
+        for lb in page.get("LoadBalancers", []):
+            lb_arn = lb["LoadBalancerArn"]
+            try:
+                tag_desc = elbv2.describe_tags(ResourceArns=[lb_arn]).get("TagDescriptions", [])
+                tags = tag_desc[0].get("Tags", []) if tag_desc else []
+                if is_protected(tags):
+                    continue
+                try:
+                    tg_paginator = elbv2.get_paginator("describe_target_groups")
+                    tgs = [tg for p in tg_paginator.paginate(LoadBalancerArn=lb_arn) for tg in p.get("TargetGroups", [])]
+                except Exception:
+                    tgs = []
+                all_empty, all_unused = True, True
+                for tg in tgs:
+                    health = elbv2.describe_target_health(TargetGroupArn=tg["TargetGroupArn"]).get("TargetHealthDescriptions", [])
+                    if health:
+                        all_empty = False
+                        if any(h.get("TargetHealth", {}).get("State") != "unused" for h in health):
+                            all_unused = False
+                            break
+                if not tgs or all_empty or all_unused:
+                    findings.append(lb_arn)
+                    logger.info("Reported orphaned load balancer: %s", lb_arn)
+            except Exception as e:
+                logger.error("Error processing load balancer %s: %s", lb_arn, e)
+                if errors is not None:
+                    errors.append(f"elb {lb_arn}: {e}")
+    return findings
 
 
 def scan(session, errors=None):
