@@ -166,7 +166,8 @@ def lambda_handler(event, context):
     # ponytail: count-based findings, upgrade to ce:GetCostAndUsage for dollar savings calculation
     errors = []
     if not SCAN_ORG:
-        summary = {"dry_run": DRY_RUN, "accounts_scanned": 1, "findings": scan(boto3.Session(), errors), "errors": errors}
+        account_id = boto3.client("sts", region_name=REGION).get_caller_identity()["Account"]
+        summary = {"dry_run": DRY_RUN, "accounts_scanned": 1, "findings": scan(get_session(account_id), errors), "errors": errors}
     else:
         findings, scanned = {}, 0
         org = boto3.client("organizations", region_name=REGION)

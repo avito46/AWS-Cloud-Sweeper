@@ -379,3 +379,23 @@ def test_multi_account_org_scan_partial_failure(monkeypatch):
     assert master_id in summary["findings"]
     assert spoke_id not in summary["findings"]
     assert any(spoke_id in err for err in summary["errors"])
+
+
+@mock_aws
+def test_single_account_assumes_spoke_role(monkeypatch):
+    monkeypatch.setattr(sweeper, "SCAN_ORG", False)
+    assumed = []
+    orig_get_session = sweeper.get_session
+
+    def mock_get_session(account_id):
+        assumed.append(account_id)
+        return orig_get_session(account_id)
+
+    monkeypatch.setattr(sweeper, "get_session", mock_get_session)
+
+    summary = sweeper.lambda_handler({}, None)
+    caller_account = boto3.client("sts", "us-east-1").get_caller_identity()["Account"]
+    assert assumed == [caller_account]
+    assert summary["accounts_scanned"] == 1
+    assert summary["errors"] == []
+

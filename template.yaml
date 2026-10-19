@@ -40,11 +40,11 @@ Resources:
       Environment:
         Variables:
           DRY_RUN: 'true'
-          REGION: 'us-east-1'
+          REGION: 'eu-north-1'
           CPU_THRESHOLD: '5'
           MIN_AGE_DAYS: '7'
           SPOKE_ROLE_NAME: 'SpokeSweeperRole'
-          SCAN_ORG: 'true'
+          SCAN_ORG: 'false'
       Events:
         WeeklySchedule:
           Type: Schedule
