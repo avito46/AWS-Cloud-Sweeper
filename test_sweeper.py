@@ -346,3 +346,36 @@ def test_elb_protected_skipped():
     )["LoadBalancers"][0]
     findings = sweeper.sweep_elbs(elbv2)
     assert lb["LoadBalancerArn"] not in findings
+
+
+@mock_aws
+def test_get_session_assumes_role():
+    session = sweeper.get_session("123456789012")
+    assert session is not None
+    creds = session.get_credentials()
+    assert creds is not None
+
+
+@mock_aws
+def test_multi_account_org_scan_partial_failure(monkeypatch):
+    monkeypatch.setattr(sweeper, "SCAN_ORG", True)
+    org = boto3.client("organizations", "us-east-1")
+    org.create_organization(FeatureSet="ALL")
+    spoke = org.create_account(Email="spoke@example.com", AccountName="SpokeAccount")["CreateAccountStatus"]
+    spoke_id = spoke["AccountId"]
+    master_id = DEFAULT_ACCOUNT_ID
+
+    orig_get_session = sweeper.get_session
+
+    def mock_get_session(account_id):
+        if account_id == spoke_id:
+            raise Exception(f"AccessDenied for spoke account {account_id}")
+        return orig_get_session(account_id)
+
+    monkeypatch.setattr(sweeper, "get_session", mock_get_session)
+
+    summary = sweeper.lambda_handler({}, None)
+    assert summary["accounts_scanned"] == 1
+    assert master_id in summary["findings"]
+    assert spoke_id not in summary["findings"]
+    assert any(spoke_id in err for err in summary["errors"])
