@@ -1,0 +1,44 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Cloud Sweeper - Spoke Member Account IAM Role
+
+Parameters:
+  HubRoleArn:
+    Type: String
+    Description: ARN of the central Hub Lambda execution role authorized to assume this role
+
+Resources:
+  SpokeSweeperRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SpokeSweeperRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref HubRoleArn
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SpokeSweeperPermissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:Describe*
+                  - ec2:CreateSnapshot
+                  - ec2:CreateTags
+                  - ec2:DeleteVolume
+                  - ec2:StopInstances
+                  - ec2:ReleaseAddress
+                  - cloudwatch:GetMetricStatistics
+                  - elasticloadbalancing:DescribeLoadBalancers
+                  - elasticloadbalancing:DescribeTargetGroups
+                  - elasticloadbalancing:DescribeTargetHealth
+                  - elasticloadbalancing:DescribeTags
+                Resource: '*'
+
+Outputs:
+  SpokeRoleArn:
+    Description: ARN of the Spoke Sweeper role
+    Value: !GetAtt SpokeSweeperRole.Arn

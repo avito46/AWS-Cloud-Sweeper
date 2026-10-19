@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Cloud Sweeper - Hub Account Lambda and Weekly EventBridge Schedule
+
+Resources:
+  HubExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: LambdaSweeperExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SweeperHubPermissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: organizations:ListAccounts
+                Resource: '*'
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: arn:aws:iam::*:role/SpokeSweeperRole
+
+  CloudSweeperFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: sweeper.lambda_handler
+      Runtime: python3.12
+      Timeout: 900
+      MemorySize: 256
+      Role: !GetAtt HubExecutionRole.Arn
+      Environment:
+        Variables:
+          DRY_RUN: 'true'
+          REGION: 'us-east-1'
+          CPU_THRESHOLD: '5'
+          MIN_AGE_DAYS: '7'
+          SPOKE_ROLE_NAME: 'SpokeSweeperRole'
+          SCAN_ORG: 'true'
+      Events:
+        WeeklySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 2 ? * SUN *)
+            Name: CloudSweeperWeeklyTrigger
+            Description: Triggers Cloud Sweeper weekly on Sunday at 02:00 UTC
+
+Outputs:
+  HubRoleArn:
+    Description: ARN of the Hub Lambda execution role
+    Value: !GetAtt HubExecutionRole.Arn
+    Export:
+      Name: CloudSweeperHubRoleArn
